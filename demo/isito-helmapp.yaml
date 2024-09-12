@@ -1,0 +1,85 @@
+apiVersion: operator.pluma.io/v1alpha1
+kind: HelmApp
+metadata:
+  name: istio
+  namespace: istio-system
+spec:
+  repo:
+    name: istio
+    url: https://istio-release.storage.googleapis.com/charts
+  globalValues:
+    global:
+      hub: release-ci.daocloud.io/mspider
+      tag: 1.20.8
+      istioNamespace: istio-system
+      meshID: nicole-helm-mesh
+      multiCluster:
+        clusterName: nicole-c3
+      configValidation: true
+      proxy:
+        logLevel: warning
+        resources:
+          limits:
+            cpu: 600m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+
+  components:
+    - name: base
+      chart: base
+      version: 1.20.8  # You may want to adjust this version
+    - name: istiod
+      chart: istiod
+      version: 1.20.8  # You may want to adjust this version
+      componentValues:
+        meshConfig:
+          outboundTrafficPolicy:
+            mode: ALLOW_ANY
+          defaultConfig:
+            extraStatTags:
+            - destination_mesh_id
+            - source_mesh_id
+            proxyMetadata:
+              ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+              ISTIO_META_DNS_CAPTURE: "true"
+              WASM_INSECURE_REGISTRIES: '*'
+            tracing:
+              sampling: 100
+          enableTracing: true
+          extensionProviders:
+          - name: otel
+            opentelemetry:
+              port: 4317
+              service: insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
+        sidecarInjectorWebhook:
+          enableNamespacesByDefault: false
+        pilot:
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 1500Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          autoscaleEnabled: true
+          autoscaleMin: 1
+          replicaCount: 1
+        
+    - name: istio-ingressgateway
+      chart: gateway
+      version: 1.20.8  # You may want to adjust this version
+      componentValues:
+        name: "istio-ingressgateway"
+        autoscaling:
+          enabled: true
+          minReplicas: 1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 900Mi
+          requests:
+            cpu: 50m
+            memory: 50Mi
+

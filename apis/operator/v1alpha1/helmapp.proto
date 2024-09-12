@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+option go_package = "pluma.io/api/operator/v1alpha1";
+
+package pluma.operator.v1alpha1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+message HelmAppSpec {
+  repeated HelmComponent components = 1;
+  // +kubebuilder:pruning:PreserveUnknownFields
+  google.protobuf.Struct globalValues = 2;
+  HelmRepo repo = 3;
+}
+
+message HelmComponent {
+  string name = 1;
+  string chart = 2;
+  string version = 3;
+  // +kubebuilder:pruning:PreserveUnknownFields
+  google.protobuf.Struct componentValues = 4;
+  HelmRepo repo = 5;
+}
+
+message HelmRepo {
+  string name = 1;
+  string url = 2;
+}
+
+enum Phase {
+  UNKNOWN = 0;
+  RECONCILING = 1;
+  SUCCEEDED = 2;
+  FAILED = 3;
+  DELETING = 4;
+}
+
+message HelmAppStatus {
+  Phase phase = 1;
+  repeated HelmComponentStatus components = 2;
+}
+
+message HelmComponentStatus {
+  string name = 1;
+  string status = 2;
+  string message = 3;
+  string version = 4;
+  repeated HelmResourceStatus resources = 5;
+  int32 resourcesTotal = 6;
+}
+
+message HelmResourceStatus {
+  string apiVersion = 1;
+  string kind = 2;
+  string name = 3;
+  string namespace = 4;
+}

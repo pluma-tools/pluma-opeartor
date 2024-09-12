@@ -1,0 +1,33 @@
+apiVersion: v2
+name: istio
+description: Helm umbrella chart for istio
+type: application
+version: 1.20.8
+appVersion: 1.20.8
+kubeVersion: ">= 1.23.0-0"
+keywords:
+  - mspider-istio
+  - istio
+  - istio-components
+
+dependencies:
+  - name: base
+    version: 1.20.8
+    repository: "https://istio-release.storage.googleapis.com/charts"
+    condition: base.enabled
+  - name: istiod
+    version: 1.20.8
+    repository: "https://istio-release.storage.googleapis.com/charts"
+    condition: istiod.enabled
+  - name: gateway
+    version: 1.20.8
+    repository: "https://istio-release.storage.googleapis.com/charts"
+    condition: istio-ingress.enabled
+  - name: ztunnel
+    version: 1.20.8
+    repository: "https://istio-release.storage.googleapis.com/charts"
+    condition: ztunnel.enabled
+  - name: cni
+    version: 1.20.8
+    repository: "https://istio-release.storage.googleapis.com/charts"
+    condition: cni.enabled

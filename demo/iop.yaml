@@ -1,0 +1,76 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: nicole-dmesh-mspider-mcpc
+  namespace: istio-system
+spec:
+  components:
+    ingressGateways:
+    - k8s:
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 900Mi
+          requests:
+            cpu: 50m
+            memory: 50Mi
+      name: istio-ingressgateway
+    pilot:
+      k8s:
+        resources:
+          limits:
+            cpu: 1500m
+            memory: 1500Mi
+          requests:
+            cpu: 200m
+            memory: 200Mi
+  hub: release-ci.daocloud.io/mspider
+  meshConfig:
+    defaultConfig:
+      extraStatTags:
+      - destination_mesh_id
+      - source_mesh_id
+      proxyMetadata:
+        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+        ISTIO_META_DNS_CAPTURE: "true"
+        WASM_INSECURE_REGISTRIES: '*'
+      tracing:
+        sampling: 100
+    enableTracing: true
+    extensionProviders:
+    - name: otel
+      opentelemetry:
+        port: 4317
+        service: insight-agent-opentelemetry-collector.insight-system.svc.cluster.local
+  namespace: istio-system
+  profile: default
+  tag: 1.22.2
+  values:
+    gateways:
+      istio-ingressgateway:
+        autoscaleEnabled: true
+        autoscaleMin: 1
+    global:
+      istioNamespace: istio-system
+      meshID: nicole-dmesh
+      multiCluster:
+        clusterName: nicole-c1-k25-a24
+      proxy:
+        logLevel: warning
+        resources:
+          limits:
+            cpu: 600m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+    meshConfig:
+      outboundTrafficPolicy:
+        mode: ALLOW_ANY
+    pilot:
+      autoscaleEnabled: true
+      autoscaleMin: 1
+      replicaCount: 1
+    sidecarInjectorWebhook:
+      enableNamespacesByDefault: false
+

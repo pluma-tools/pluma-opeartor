@@ -1,0 +1,23 @@
+version: v1
+plugins:
+  - name: go
+    out: .
+    opt: paths=source_relative
+  - name: go-grpc
+    out: .
+    opt: paths=source_relative
+  - name: grpc-gateway
+    out: .
+    opt: paths=source_relative,allow_delete_body=true
+  - name: golang-jsonshim
+    out: .
+    opt: paths=source_relative
+  - name: golang-deepcopy
+    out: .
+    opt: paths=source_relative
+  - name: openapiv2
+    out: ./swagger
+    opt: allow_delete_body=true
+  - name: grpc-gateway-ts
+    out: ./sdks/ts
+#    opt: use_proto_names=true

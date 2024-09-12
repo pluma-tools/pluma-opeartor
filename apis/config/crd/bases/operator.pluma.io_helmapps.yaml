@@ -1,0 +1,166 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: helmapps.operator.pluma.io
+spec:
+  group: operator.pluma.io
+  names:
+    kind: HelmApp
+    listKind: HelmAppList
+    plural: helmapps
+    shortNames:
+      - happ
+    singular: helmapp
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - jsonPath: .status.phase
+          name: phase
+          type: string
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: HelmApp is the Schema for the HelmApp API
+          properties:
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
+              type: object
+            spec:
+              properties:
+                components:
+                  items:
+                    properties:
+                      chart:
+                        type: string
+                      componentValues:
+                        description: |-
+                          `Struct` represents a structured data value, consisting of fields
+                          which map to dynamically typed values. In some languages, `Struct`
+                          might be supported by a native representation. For example, in
+                          scripting languages like JS a struct is represented as an
+                          object. The details of that representation are described together
+                          with the proto support for the language.
+
+
+                          The JSON representation for `Struct` is JSON object.
+                        properties:
+                          fields:
+                            additionalProperties:
+                              description: |-
+                                `Value` represents a dynamically typed value which can be either
+                                null, a number, a string, a boolean, a recursive struct value, or a
+                                list of values. A producer of value is expected to set one of these
+                                variants. Absence of any variant indicates an error.
+
+
+                                The JSON representation for `Value` is JSON value.
+                              type: object
+                            description: Unordered map of dynamically typed values.
+                            type: object
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      name:
+                        type: string
+                      repo:
+                        properties:
+                          name:
+                            type: string
+                          url:
+                            type: string
+                        type: object
+                      version:
+                        type: string
+                    type: object
+                  type: array
+                globalValues:
+                  description: |-
+                    `Struct` represents a structured data value, consisting of fields
+                    which map to dynamically typed values. In some languages, `Struct`
+                    might be supported by a native representation. For example, in
+                    scripting languages like JS a struct is represented as an
+                    object. The details of that representation are described together
+                    with the proto support for the language.
+
+
+                    The JSON representation for `Struct` is JSON object.
+                  properties:
+                    fields:
+                      additionalProperties:
+                        description: |-
+                          `Value` represents a dynamically typed value which can be either
+                          null, a number, a string, a boolean, a recursive struct value, or a
+                          list of values. A producer of value is expected to set one of these
+                          variants. Absence of any variant indicates an error.
+
+
+                          The JSON representation for `Value` is JSON value.
+                        type: object
+                      description: Unordered map of dynamically typed values.
+                      type: object
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                repo:
+                  properties:
+                    name:
+                      type: string
+                    url:
+                      type: string
+                  type: object
+              type: object
+            status:
+              properties:
+                components:
+                  items:
+                    properties:
+                      message:
+                        type: string
+                      name:
+                        type: string
+                      resources:
+                        items:
+                          properties:
+                            apiVersion:
+                              type: string
+                            kind:
+                              type: string
+                            name:
+                              type: string
+                            namespace:
+                              type: string
+                          type: object
+                        type: array
+                      resourcesTotal:
+                        format: int32
+                        type: integer
+                      status:
+                        type: string
+                      version:
+                        type: string
+                    type: object
+                  type: array
+                phase:
+                  format: int32
+                  type: integer
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
