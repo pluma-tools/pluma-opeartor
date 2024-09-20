@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"pluma.io/pluma-opeartor/config"
 	"reflect"
 
 	"dario.cat/mergo"
@@ -28,6 +29,7 @@ import (
 type IstioOperatorReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Config config.Config
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -94,7 +96,7 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Convert IstioOperator to HelmApp
-	helmApp, err := convertIopToHelmApp(iop)
+	helmApp, err := r.convertIopToHelmApp(iop)
 	if err != nil {
 		log.Error(err, "Failed to convert IstioOperator to HelmApp")
 		return ctrl.Result{}, err
@@ -124,7 +126,7 @@ func structToMap(in any) map[string]interface{} {
 	return res
 }
 
-func convertIopToHelmApp(in *operatorv1alpha1.IstioOperator) (*v1alpha1.HelmApp, error) {
+func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.IstioOperator) (*v1alpha1.HelmApp, error) {
 	if in == nil || in.Spec == nil {
 		return nil, fmt.Errorf("iop must required")
 	}
@@ -158,7 +160,7 @@ func convertIopToHelmApp(in *operatorv1alpha1.IstioOperator) (*v1alpha1.HelmApp,
 	ztunnel := &v1alpha1.HelmComponent{}
 
 	// merge iop profile
-	iop, err := mergeIOPWithProfile(in)
+	iop, err := r.mergeIOPWithProfile(in)
 	if err != nil {
 		return nil, err
 	}
@@ -372,9 +374,7 @@ func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, hel
 	return nil
 }
 
-var profilePath = "internal/istio/profiles"
-
-func mergeIOPWithProfile(iop *operatorv1alpha1.IstioOperator) (*operatorv1alpha1.IstioOperator, error) {
+func (r *IstioOperatorReconciler) mergeIOPWithProfile(iop *operatorv1alpha1.IstioOperator) (*operatorv1alpha1.IstioOperator, error) {
 	if iop == nil || iop.Spec == nil {
 		return nil, fmt.Errorf("input IstioOperator is nil or has nil Spec")
 	}
@@ -385,7 +385,7 @@ func mergeIOPWithProfile(iop *operatorv1alpha1.IstioOperator) (*operatorv1alpha1
 	}
 
 	// Read the profile file
-	profilePath := fmt.Sprintf("%s/%s.yaml", profilePath, profileName)
+	profilePath := fmt.Sprintf("%s/%s.yaml", r.Config.ProfilesDir, profileName)
 	profileData, err := os.ReadFile(profilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read profile file %s: %w", profilePath, err)

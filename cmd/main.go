@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"pluma.io/pluma-opeartor/config"
 
 	"istio.io/istio/operator/pkg/apis/istio/v1alpha1"
 	"pluma.io/pluma-opeartor/internal/controller"
@@ -39,6 +40,7 @@ func main() {
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&config.GlobalConfig.ProfilesDir, "profiles-dir", "./istio/profiles", "Directory containing Istio profiles")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -72,6 +74,7 @@ func main() {
 	if err = (&istio.IstioOperatorReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Config: config.GlobalConfig,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "IstioOperator")
 		os.Exit(1)

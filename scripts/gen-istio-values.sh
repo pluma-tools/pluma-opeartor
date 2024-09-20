@@ -11,8 +11,8 @@ debug_log "Script started"
 
 # Define paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_YAML="${SCRIPT_DIR}/../internal/istio/sample-charts/istio/Chart.yaml"
-OUTPUT_FILE="${SCRIPT_DIR}/../internal/istio/sample-charts/istio/values.yaml"
+CHART_YAML="${SCRIPT_DIR}/../istio/sample-charts/istio/Chart.yaml"
+OUTPUT_FILE="${SCRIPT_DIR}/../istio/sample-charts/istio/values.yaml"
 
 debug_log "CHART_YAML set to $CHART_YAML"
 debug_log "OUTPUT_FILE set to $OUTPUT_FILE"

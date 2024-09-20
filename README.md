@@ -1,5 +1,7 @@
 # Pluma Operator
 
+Helm operator and Istio operator
+
 Pluma Operator is a Kubernetes operator that provides advanced component management capabilities using Helm charts. It offers continuous lifecycle management for installed components and supports the conversion of Istio Custom Resource Definitions (CRDs) into HelmApp resources for streamlined Istio installation.
 
 ## Features
@@ -24,4 +26,14 @@ TODO
 
 TODO
 
-Helm operator and Istio operator
+## install
+
+To install the Pluma Operator using Helm, execute the following command. This command will perform an upgrade if the Pluma Operator is already installed or install it if it’s not present. It will also automatically create the `pluma-system` namespace if it doesn't exist.
+
+```bash
+helm upgrade --install pluma-operator ./manifests/pluma --create-namespace --namespace pluma-system
+```
+
+```
+
+```

@@ -10,14 +10,15 @@ OFFLINE_ARCH ?= amd64
 HUB ?= release-ci.daocloud.io/mspider
 HUB_CI = release-ci.daocloud.io/mspider
 HELM_REPO ?= https://release-ci.daocloud.io/chartrepo/mspider
-PROD_NAME ?= mspider
-MINOR_VERSION ?= v0.30
+PROD_NAME ?= pluma-opretor
+MINOR_VERSION ?= v0.0
 VERSION ?= $(MINOR_VERSION)-dev-$(shell git rev-parse --short=8 HEAD)
 
 REGISTRY_USER_NAME?=
 REGISTRY_PASSWORD?=
 
 PUSH_IMAGES ?= 1
+PLATFORMS ?= linux/amd64,linux/arm64
 
 RETRY_LIMIT := 3
 
@@ -55,3 +56,30 @@ gen-client:
 
 gen-istio-values:
 	./scripts/gen-istio-values.sh
+
+ifeq ($(PUSH_IMAGES),1)
+BUILD_CMD=buildx build --platform $(PLATFORMS) --push
+else
+BUILD_CMD=buildx build --platform $(PLATFORMS)
+endif
+
+
+define retry
+	attempts=0; \
+	max_attempts=$(RETRY_LIMIT); \
+	while [ $$attempts -lt $$max_attempts ]; do \
+		eval $(1) && break; \
+		attempts=$$((attempts+1)); \
+		echo "Attempt $$attempts/$$max_attempts failed. Retrying..."; \
+		if [ $$attempts -eq $$max_attempts ]; then \
+			echo "Command failed after $$attempts attempts."; \
+			exit 1; \
+		fi; \
+	done
+endef
+
+build-docker:
+	$(call retry, docker $(BUILD_CMD) $(DOCKER_BUILD_FLAGS) \
+    		-t $(HUB)/$(PROD_NAME):$(VERSION) -f docker/Dockerfile .)
+
+.PHONY: build-docker

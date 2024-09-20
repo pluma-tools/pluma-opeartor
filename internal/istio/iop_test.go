@@ -1,6 +1,7 @@
 package istio
 
 import (
+	"pluma.io/pluma-opeartor/config"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -13,7 +14,6 @@ func Test_mergeIOPWithProfile(t *testing.T) {
 		iop string
 	}
 
-	profilePath = "profiles"
 	tests := []struct {
 		name    string
 		args    args
@@ -140,12 +140,17 @@ spec:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			r := &IstioOperatorReconciler{
+				Config: config.Config{
+					ProfilesDir: "../istio/profiles",
+				},
+			}
 			var iop operatorv1alpha1.IstioOperator
 			err := yaml.Unmarshal([]byte(tt.args.iop), &iop)
 			if err != nil {
 				t.Fatalf("Failed to unmarshal input YAML: %v", err)
 			}
-			got, err := mergeIOPWithProfile(&iop)
+			got, err := r.mergeIOPWithProfile(&iop)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("mergeIOPWithProfile() error = %v, wantErr %v", err, tt.wantErr)
 				return
