@@ -15,6 +15,7 @@ spec:
             cpu: 50m
             memory: 50Mi
       name: istio-ingressgateway
+      enabled: true
     pilot:
       k8s:
         resources:
@@ -48,8 +49,8 @@ spec:
   values:
     gateways:
       istio-ingressgateway:
-        autoscaleEnabled: true
-        autoscaleMin: 1
+        autoscaleEnabled: "true"
+        autoscaleMin: "1"
     global:
       istioNamespace: istio-system
       meshID: nicole-dmesh
@@ -68,9 +69,9 @@ spec:
       outboundTrafficPolicy:
         mode: ALLOW_ANY
     pilot:
-      autoscaleEnabled: true
-      autoscaleMin: 1
-      replicaCount: 1
+      autoscaleEnabled: "true"
+      autoscaleMin: "1"
+      replicaCount: "1"
     sidecarInjectorWebhook:
       enableNamespacesByDefault: false
 

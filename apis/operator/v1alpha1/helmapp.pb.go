@@ -282,6 +282,8 @@ type HelmAppStatus struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// +kubebuilder:validation:Enum=UNKNOWN;RECONCILING;SUCCEEDED;FAILED;DELETING
+	// +kubebuilder:validation:Format:type=string
 	Phase      Phase                  `protobuf:"varint,1,opt,name=phase,proto3,enum=pluma.operator.v1alpha1.Phase" json:"phase,omitempty"`
 	Components []*HelmComponentStatus `protobuf:"bytes,2,rep,name=components,proto3" json:"components,omitempty"`
 }

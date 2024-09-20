@@ -37,6 +37,8 @@ enum Phase {
 }
 
 message HelmAppStatus {
+  // +kubebuilder:validation:Enum=UNKNOWN;RECONCILING;SUCCEEDED;FAILED;DELETING
+  // +kubebuilder:validation:Format:type=string
   Phase phase = 1;
   repeated HelmComponentStatus components = 2;
 }

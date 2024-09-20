@@ -156,8 +156,16 @@ spec:
                     type: object
                   type: array
                 phase:
-                  format: int32
-                  type: integer
+                  allOf:
+                    - format: int32
+                    - format: string
+                  enum:
+                    - UNKNOWN
+                    - RECONCILING
+                    - SUCCEEDED
+                    - FAILED
+                    - DELETING
+                  type: string
               type: object
           type: object
       served: true
