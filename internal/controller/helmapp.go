@@ -60,6 +60,11 @@ func (r *HelmAppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+const (
+	failedAfter       = 30 * time.Second
+	serverFailedAfter = 60 * time.Second
+)
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -80,20 +85,20 @@ func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !controllerutil.ContainsFinalizer(helmApp, constants.HelmAppFinalizer) {
 		controllerutil.AddFinalizer(helmApp, constants.HelmAppFinalizer)
 		if err := r.Update(ctx, helmApp); err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{RequeueAfter: serverFailedAfter}, err
 		}
 	}
 
 	// Initialize Helm client
 	helmCfg, err := newActionConfiguration()
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to new Helm action config: %v", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to new Helm action config: %v", err)
 	}
 
 	// Get the local kubeconfig
 	restClientGetter := genericclioptions.NewConfigFlags(true)
 	if err := helmCfg.Init(restClientGetter, helmApp.Namespace, "", debug); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to initialize Helm action config: %w", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to initialize Helm action config: %w", err)
 	}
 
 	// Create a map of desired components
@@ -145,12 +150,12 @@ func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	helmApp.Status.Phase = overallPhase
 
 	if err := r.Status().Update(ctx, helmApp); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update HelmApp status: %w", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to update HelmApp status: %w", err)
 	}
 
 	// If the phase is FAILED, requeue after 3 minutes
 	if overallPhase == operatorv1alpha1.Phase_FAILED {
-		return ctrl.Result{RequeueAfter: 3 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: failedAfter}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -193,13 +198,13 @@ func (r *HelmAppReconciler) reconcileDelete(ctx context.Context, helmApp *operat
 	// Initialize Helm client
 	helmCfg, err := newActionConfiguration()
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to new Helm action config: %v", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to new Helm action config: %v", err)
 	}
 
 	// Get the local kubeconfig
 	restClientGetter := genericclioptions.NewConfigFlags(true)
 	if err := helmCfg.Init(restClientGetter, helmApp.Namespace, "", debug); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to initialize Helm action config: %w", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to initialize Helm action config: %w", err)
 	}
 
 	// Uninstall all components in reverse order
@@ -207,16 +212,23 @@ func (r *HelmAppReconciler) reconcileDelete(ctx context.Context, helmApp *operat
 	if helmApp.Status != nil && len(helmApp.Status.Components) > 0 {
 		for i := len(helmApp.Status.Components) - 1; i >= 0; i-- {
 			component := helmApp.Status.Components[i]
-			if err := r.uninstallComponent(ctx, component.Name, helmCfg); err != nil {
-				cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s during deletion", component.Name))
-				allComponentsUninstalled = false
-
-				err = fmt.Errorf("uninstall %s error: %v", component.Name, err)
-				// Update component status with error message
-				helmApp.Status.Components[i].Status = helmrelease.StatusFailed.String()
-				helmApp.Status.Components[i].Message = err.Error()
-			} else {
+			cleanStatus := true
+			if component.Name != "" {
 				cLog.Info("Uninstalled component during deletion", "component", component.Name)
+				err := r.uninstallComponent(ctx, component.Name, helmCfg)
+				if err != nil {
+					cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s during deletion", component.Name))
+					allComponentsUninstalled = false
+
+					err = fmt.Errorf("uninstall %s error: %v", component.Name, err)
+					// Update component status with error message
+					helmApp.Status.Components[i].Status = helmrelease.StatusFailed.String()
+					helmApp.Status.Components[i].Message = err.Error()
+					cleanStatus = false
+				}
+			}
+
+			if cleanStatus {
 				// Remove the uninstalled component from the status
 				helmApp.Status.Components = append(helmApp.Status.Components[:i], helmApp.Status.Components[i+1:]...)
 			}
@@ -226,14 +238,14 @@ func (r *HelmAppReconciler) reconcileDelete(ctx context.Context, helmApp *operat
 	// Update HelmApp status
 	helmApp.Status.Phase = calculateOverallPhase(helmApp, helmApp.Status.Components)
 	if err := r.Status().Update(ctx, helmApp); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update HelmApp status: %w", err)
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to update HelmApp status: %w", err)
 	}
 
 	// Remove finalizer only if all components are uninstalled
 	if allComponentsUninstalled {
 		controllerutil.RemoveFinalizer(helmApp, constants.HelmAppFinalizer)
 		if err := r.Update(ctx, helmApp); err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{RequeueAfter: serverFailedAfter}, err
 		}
 		return ctrl.Result{}, nil
 	}
@@ -267,12 +279,18 @@ func newHelmSettings() *helmcli.EnvSettings {
 }
 
 func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *operatorv1alpha1.HelmApp, component *operatorv1alpha1.HelmComponent,
-	helmCfg *helmaction.Configuration) (*operatorv1alpha1.HelmComponentStatus, error) {
+	helmCfg *helmaction.Configuration) (componentStatus *operatorv1alpha1.HelmComponentStatus, err error) {
 	cLog := ctllog.FromContext(ctx)
 
 	values := MergeValues(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
 	if component.IgnoreGlobalValues {
 		values = component.ComponentValues.AsMap()
+	}
+	// Create component status
+	componentStatus = &operatorv1alpha1.HelmComponentStatus{
+		Name:    component.GetName(),
+		Status:  "unknown",
+		Version: "unknown",
 	}
 
 	// Create a new install action
@@ -286,13 +304,17 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	// Locate the chart
 	cp, err := install.ChartPathOptions.LocateChart(component.Chart, settings)
 	if err != nil {
-		return nil, fmt.Errorf("failed to locate chart: %w", err)
+		err = fmt.Errorf("failed to locate chart: %w", err)
+		componentStatus.Message = err.Error()
+		return
 	}
 
 	// Load Chart
 	chart, err := loader.Load(cp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load chart: %w", err)
+		err = fmt.Errorf("failed to load chart: %w", err)
+		componentStatus.Message = err.Error()
+		return
 	}
 
 	// Install or upgrade the release
@@ -336,9 +358,9 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 
 	version := "unknown"
 	status := "unknown"
-	msg := ""
 	var resourcesStatus []*operatorv1alpha1.HelmResourceStatus
 	resourcesTotal := 0
+
 	if release != nil {
 		version = strconv.Itoa(release.Version)
 		status = release.Info.Status.String()
@@ -364,17 +386,13 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 		}
 	}
 	if mErrs.ErrorOrNil() != nil {
-		msg = mErrs.Error()
+		componentStatus.Message = mErrs.Error()
 	}
-	// Create component status
-	componentStatus := &operatorv1alpha1.HelmComponentStatus{
-		Name:           component.GetName(),
-		Version:        version,
-		Status:         status,
-		Message:        msg,
-		Resources:      resourcesStatus,
-		ResourcesTotal: int32(resourcesTotal),
-	}
+	// sync status
+	componentStatus.Version = version
+	componentStatus.Status = status
+	componentStatus.Resources = resourcesStatus
+	componentStatus.ResourcesTotal = int32(resourcesTotal)
 
 	return componentStatus, mErrs.ErrorOrNil()
 }
@@ -382,14 +400,24 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 func (r *HelmAppReconciler) uninstallComponent(ctx context.Context, componentName string, helmCfg *helmaction.Configuration) error {
 	cLog := ctllog.FromContext(ctx)
 
-	uninstall := helmaction.NewUninstall(helmCfg)
-	_, err := uninstall.Run(componentName)
+	// check
+	getAction := helmaction.NewGet(helmCfg)
+	cRelease, err := getAction.Run(componentName)
 	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
-		cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s", componentName))
+		cLog.Error(err, fmt.Sprintf("Failed to get component %s", componentName))
 		return err
 	}
+	if cRelease == nil {
+		return nil
+	}
 
-	return nil
+	uninstall := helmaction.NewUninstall(helmCfg)
+	_, err = uninstall.Run(componentName)
+	if err == nil || errors.Is(err, driver.ErrReleaseNotFound) {
+		return nil
+	}
+	cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s", componentName))
+	return err
 }
 
 // MergeValues merges two maps of values, with values from b taking precedence.

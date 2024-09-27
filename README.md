@@ -4,13 +4,6 @@ Helm operator and Istio operator
 
 Pluma Operator is a Kubernetes operator that provides advanced component management capabilities using Helm charts. It offers continuous lifecycle management for installed components and supports the conversion of Istio Custom Resource Definitions (CRDs) into HelmApp resources for streamlined Istio installation.
 
-## Features
-
-- Helm-based component installation and management
-- Continuous lifecycle management for installed components
-- Conversion of Istio CRDs to HelmApp resources
-- Simplified, suite-based Istio installation
-
 ## Key Capabilities
 
 1. **Helm Integration**: Utilizes Helm charts for efficient and standardized component deployment.
