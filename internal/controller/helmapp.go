@@ -22,6 +22,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/resource"
 	operatorv1alpha1 "pluma.io/api/operator/v1alpha1"
+	"pluma.io/pluma-opeartor/internal/pkg/constants"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -59,8 +60,6 @@ func (r *HelmAppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-const helmFinalizer = "helmapp.pluma.io/finalizer"
-
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -78,8 +77,8 @@ func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(helmApp, helmFinalizer) {
-		controllerutil.AddFinalizer(helmApp, helmFinalizer)
+	if !controllerutil.ContainsFinalizer(helmApp, constants.HelmAppFinalizer) {
+		controllerutil.AddFinalizer(helmApp, constants.HelmAppFinalizer)
 		if err := r.Update(ctx, helmApp); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -116,7 +115,7 @@ func (r *HelmAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Uninstall components that are no longer in the spec
 	if helmApp.Status != nil {
 		for _, existingStatus := range helmApp.Status.Components {
-			if _, exists := desiredComponents[existingStatus.Name]; !exists {
+			if _, exists := desiredComponents[existingStatus.Name]; !exists && existingStatus.Name != "" {
 				if err := r.uninstallComponent(ctx, existingStatus.Name, helmCfg); err != nil {
 					cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s", existingStatus.Name))
 					// Update component status with error message
@@ -232,7 +231,7 @@ func (r *HelmAppReconciler) reconcileDelete(ctx context.Context, helmApp *operat
 
 	// Remove finalizer only if all components are uninstalled
 	if allComponentsUninstalled {
-		controllerutil.RemoveFinalizer(helmApp, helmFinalizer)
+		controllerutil.RemoveFinalizer(helmApp, constants.HelmAppFinalizer)
 		if err := r.Update(ctx, helmApp); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -272,6 +271,9 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	cLog := ctllog.FromContext(ctx)
 
 	values := MergeValues(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
+	if component.IgnoreGlobalValues {
+		values = component.ComponentValues.AsMap()
+	}
 
 	// Create a new install action
 	install := helmaction.NewInstall(helmCfg)

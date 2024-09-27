@@ -1,8 +1,9 @@
 package istio
 
 import (
-	"pluma.io/pluma-opeartor/config"
 	"testing"
+
+	"pluma.io/pluma-opeartor/config"
 
 	"github.com/google/go-cmp/cmp"
 	operatorv1alpha1 "istio.io/istio/operator/pkg/apis/istio/v1alpha1"

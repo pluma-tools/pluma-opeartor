@@ -26,6 +26,7 @@ export type HelmComponent = {
   version?: string
   componentValues?: GoogleProtobufStruct.Struct
   repo?: HelmRepo
+  ignoreGlobalValues?: boolean
 }
 
 export type HelmRepo = {

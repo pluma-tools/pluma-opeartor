@@ -11,7 +11,7 @@ image:
   repository: release-ci.daocloud.io/mspider/pluma-opretor
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0-dev-086395ec"
+  tag: "v0.0-dev-24e914ef"
 
 imagePullSecrets: []
 nameOverride: ""

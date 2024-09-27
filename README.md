@@ -34,6 +34,3 @@ To install the Pluma Operator using Helm, execute the following command. This co
 helm upgrade --install pluma-operator ./manifests/pluma --create-namespace --namespace pluma-system
 ```
 
-```
-
-```

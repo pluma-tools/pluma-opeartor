@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"pluma.io/pluma-opeartor/config"
 	"reflect"
+
+	v1alpha12 "istio.io/api/operator/v1alpha1"
 
 	"dario.cat/mergo"
 	structpb "github.com/golang/protobuf/ptypes/struct"
@@ -13,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"pluma.io/pluma-opeartor/config"
+	"pluma.io/pluma-opeartor/internal/pkg/constants"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
@@ -39,8 +42,6 @@ func (r *IstioOperatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-const iopFinalizer = "iop.pluma.io/finalizer"
-
 func (r *IstioOperatorReconciler) reconcileDelete(ctx context.Context, iop *operatorv1alpha1.IstioOperator) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -52,7 +53,7 @@ func (r *IstioOperatorReconciler) reconcileDelete(ctx context.Context, iop *oper
 			return ctrl.Result{}, fmt.Errorf("failed to get HelmApp: %w", err)
 		}
 		// HelmApp not found, proceed with finalizer removal
-	} else if hApp.GetName() == iop.GetName() && hApp.Labels != nil && hApp.Labels[ManagedLabel] == ManagedLabelValue {
+	} else if hApp.GetName() == iop.GetName() && hApp.Labels != nil && hApp.Labels[constants.ManagedLabel] == constants.ManagedLabelValue {
 		// HelmApp found, attempt to delete it
 		if err := r.Delete(ctx, hApp); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to delete HelmApp: %w", err)
@@ -61,7 +62,7 @@ func (r *IstioOperatorReconciler) reconcileDelete(ctx context.Context, iop *oper
 	}
 
 	// Remove the finalizer from the IstioOperator
-	controllerutil.RemoveFinalizer(iop, iopFinalizer)
+	controllerutil.RemoveFinalizer(iop, constants.IOPFinalizer)
 	if err := r.Update(ctx, iop); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -88,8 +89,8 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(iop, iopFinalizer) {
-		controllerutil.AddFinalizer(iop, iopFinalizer)
+	if !controllerutil.ContainsFinalizer(iop, constants.IOPFinalizer) {
+		controllerutil.AddFinalizer(iop, constants.IOPFinalizer)
 		if err := r.Update(ctx, iop); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -132,10 +133,10 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 	}
 
 	buildName := func(p string) string {
-		return fmt.Sprintf("%s-%s", in.GetName(), p)
+		return fmt.Sprintf("iop-%s-%s", in.GetName(), p)
 	}
 	// todo: add default config
-	version := "1.20.8"
+	version := "1.21.1"
 	if in.Spec.GetTag().GetStringValue() != "" {
 		version = in.Spec.GetTag().GetStringValue()
 	}
@@ -242,17 +243,16 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 			components = append(components, istiodComponent)
 		}
 
-		// ingress
-		for _, gw := range iop.Spec.GetComponents().GetIngressGateways() {
+		buildGw := func(gw *v1alpha12.GatewaySpec) error {
 			if !gw.GetEnabled().GetValue() {
-				continue
+				return nil
 			}
 			if gw.GetName() == "" {
 				// must have name
-				continue
+				return nil
 			}
 			newGw := ingressGateway
-			newGw.Name = gw.GetName()
+			newGw.Name = buildName(gw.GetName())
 
 			// Merge component-specific values
 			componentValues := make(map[string]interface{})
@@ -281,13 +281,26 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 					}
 				}
 			}
+
 			// Convert componentValues to structpb.Struct
 			componentValuesStruct, err := structpb2.NewStruct(componentValues)
 			if err != nil {
-				return nil, fmt.Errorf("failed to convert component values to struct: %w", err)
+				return fmt.Errorf("failed to convert component values to struct: %w", err)
 			}
 			newGw.ComponentValues = componentValuesStruct
 			components = append(components, &newGw)
+			return nil
+		}
+		// ingress
+		for _, gw := range iop.Spec.GetComponents().GetIngressGateways() {
+			if err := buildGw(gw); err != nil {
+				return nil, err
+			}
+		}
+		for _, gw := range iop.Spec.GetComponents().GetEgressGateways() {
+			if err := buildGw(gw); err != nil {
+				return nil, err
+			}
 		}
 
 		// cni
@@ -309,7 +322,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 			Name:      iop.GetName(),
 			Namespace: iop.GetNamespace(),
 			Labels: map[string]string{
-				ManagedLabel: ManagedLabelValue,
+				constants.ManagedLabel: constants.ManagedLabelValue,
 			},
 		},
 		Spec: &v1alpha1.HelmAppSpec{
@@ -331,12 +344,6 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 	return happ, nil
 }
 
-const (
-	ManagedLabel      = "pluma.io/managed"
-	ManagedLabelValue = "pluma-operator"
-	ManagedErrMsg     = "pluma.io/errorMsg"
-)
-
 func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, helmApp *v1alpha1.HelmApp) error {
 	log := log.FromContext(ctx)
 
@@ -357,7 +364,7 @@ func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, hel
 	}
 
 	managed := false
-	if existingHelmApp.Labels != nil && existingHelmApp.Labels[ManagedLabel] == ManagedLabelValue {
+	if existingHelmApp.Labels != nil && existingHelmApp.Labels[constants.ManagedLabel] == constants.ManagedLabelValue {
 		managed = true
 	}
 	// HelmApp exists, check if update is needed

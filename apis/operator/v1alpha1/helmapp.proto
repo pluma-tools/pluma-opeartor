@@ -21,6 +21,7 @@ message HelmComponent {
   // +kubebuilder:pruning:PreserveUnknownFields
   google.protobuf.Struct componentValues = 4;
   HelmRepo repo = 5;
+  bool ignoreGlobalValues = 6;
 }
 
 message HelmRepo {
