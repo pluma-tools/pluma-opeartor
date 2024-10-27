@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"log"
 	"os"
+	"pluma.io/pluma-opeartor/internal/pkg/tools"
 	"reflect"
 	"strconv"
 	"time"
@@ -282,7 +285,7 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	helmCfg *helmaction.Configuration) (componentStatus *operatorv1alpha1.HelmComponentStatus, err error) {
 	cLog := ctllog.FromContext(ctx)
 
-	values := MergeValues(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
+	values := tools.MergeMaps(helmApp.Spec.GlobalValues.AsMap(), component.ComponentValues.AsMap())
 	if component.IgnoreGlobalValues {
 		values = component.ComponentValues.AsMap()
 	}
@@ -326,6 +329,84 @@ func (r *HelmAppReconciler) reconcileComponent(ctx context.Context, helmApp *ope
 	history, err := histClient.Run(component.Name)
 	switch {
 	case errors.Is(err, driver.ErrReleaseNotFound):
+		// force install
+		if _, ok := helmApp.Labels[constants.AllowForceUpgradeLabel]; ok {
+			install.DryRun = true
+			install.IsUpgrade = true
+
+			// Release doesn't exist, install it
+			release, err = install.Run(chart, values)
+			if err != nil {
+				cLog.Error(err, "failed to install release")
+				multierror.Append(mErrs, fmt.Errorf("failed to install release: %v", err))
+			}
+			cLog.Info("Installed release", "component", component.Name)
+
+			// Parse the release manifest to get resource statuses
+			resources, err := resource.NewBuilder(helmCfg.RESTClientGetter).RequireObject(true).
+				Unstructured().
+				Stream(bytes.NewBufferString(release.Manifest), "").
+				Do().Infos()
+			if err != nil {
+				cLog.Error(err, "failed to parse release manifest")
+			} else {
+				for _, re := range resources {
+					// get resource and update resource label and annotation to fix helm validation
+					// 		1.  label validation error: missing key \"app.kubernetes.io/managed-by\": must be set to \"Helm\";
+					// 		2.  annotation validation error: missing key \"meta.helm.sh/release-name\": must be set to "release-name"
+					// 		3.  annotation validation error: missing key \"meta.helm.sh/release-namespace\": must be set to \"release namespace\"
+					obj := &unstructured.Unstructured{}
+					obj.SetGroupVersionKind(re.Mapping.GroupVersionKind)
+					obj.SetName(re.Name)
+					key := client.ObjectKey{Namespace: re.Namespace, Name: re.Name}
+					err := r.Client.Get(ctx, key, obj)
+					if err != nil {
+						if !errors2.IsNotFound(err) {
+							cLog.Error(err, "failed to get resource")
+						}
+					} else {
+						needUpdate := false
+						cLabels := obj.GetLabels()
+						if cLabels == nil {
+							cLabels = map[string]string{}
+						}
+						if v, ok := cLabels["app.kubernetes.io/managed-by"]; !ok || v != "Helm" {
+							needUpdate = true
+							cLabels["app.kubernetes.io/managed-by"] = "Helm"
+						}
+						obj.SetLabels(cLabels)
+
+						cAnno := obj.GetAnnotations()
+						if cAnno == nil {
+							cAnno = map[string]string{}
+						}
+
+						if v, ok := cAnno["meta.helm.sh/release-name"]; !ok || v != component.Name {
+							needUpdate = true
+							cAnno["meta.helm.sh/release-name"] = component.Name
+						}
+
+						if v, ok := cAnno["meta.helm.sh/release-namespace"]; !ok || v != component.Name {
+							needUpdate = true
+							cAnno["meta.helm.sh/release-namespace"] = helmApp.Namespace
+						}
+						obj.SetAnnotations(cAnno)
+
+						// update
+						if needUpdate {
+							cLog.Info("force update resourcelabels and annotation", "resource", re.Name)
+							if err := r.Client.Update(ctx, obj); err != nil {
+								cLog.Error(err, "failed to update resource", "resource", re.Name)
+							}
+						}
+					}
+				}
+			}
+
+			install.DryRun = false
+			install.IsUpgrade = false
+		}
+
 		// Release doesn't exist, install it
 		release, err = install.Run(chart, values)
 		if err != nil {
@@ -418,26 +499,6 @@ func (r *HelmAppReconciler) uninstallComponent(ctx context.Context, componentNam
 	}
 	cLog.Error(err, fmt.Sprintf("Failed to uninstall component %s", componentName))
 	return err
-}
-
-// MergeValues merges two maps of values, with values from b taking precedence.
-func MergeValues(a, b map[string]any) map[string]any {
-	out := make(map[string]any, len(a))
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		if v, ok := v.(map[string]any); ok {
-			if bv, ok := out[k]; ok {
-				if bv, ok := bv.(map[string]any); ok {
-					out[k] = MergeValues(bv, v)
-					continue
-				}
-			}
-		}
-		out[k] = v
-	}
-	return out
 }
 
 func hasConfigChanged(release *helmrelease.Release, newValues map[string]any, newVersion string) bool {

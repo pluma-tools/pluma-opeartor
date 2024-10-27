@@ -46,7 +46,7 @@ spec:
             memory: 200Mi
     ingressGateways:
     - name: istio-ingressgateway
-      enabled: false
+      enabled: true
   meshConfig:
     defaultConfig:
       extraStatTags:
@@ -99,7 +99,7 @@ spec:
             memory: 200Mi
     ingressGateways:
     - name: istio-ingressgateway
-      enabled: false
+      enabled: true
     egressGateways:
     - name: istio-egressgateway
       enabled: false
@@ -143,7 +143,7 @@ spec:
 		t.Run(tt.name, func(t *testing.T) {
 			r := &IstioOperatorReconciler{
 				Config: config.Config{
-					ProfilesDir: "../istio/profiles",
+					ProfilesDir: "../../istio/profiles",
 				},
 			}
 			var iop operatorv1alpha1.IstioOperator

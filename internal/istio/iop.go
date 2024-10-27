@@ -8,8 +8,8 @@ import (
 
 	v1alpha12 "istio.io/api/operator/v1alpha1"
 
-	"dario.cat/mergo"
 	structpb "github.com/golang/protobuf/ptypes/struct"
+	"github.com/imdario/mergo"
 	structpb2 "google.golang.org/protobuf/types/known/structpb"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -168,9 +168,22 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 
 	// parse global values
 	var globalValues *structpb.Struct
-	if global := iop.Spec.GetValues().GetFields()["global"]; global != nil {
-		globalValues = global.GetStructValue()
+
+	if iop.Spec.Values == nil {
+		iop.Spec.Values = &structpb.Struct{Fields: make(map[string]*structpb.Value, 0)}
 	}
+	if global := iop.Spec.GetValues().GetFields()["global"]; global != nil {
+		gv := global.GetStructValue()
+		// render hub & tag
+		if h := iop.Spec.GetHub(); h != "" {
+			// Set hub in global structure
+			gv.Fields["hub"] = structpb2.NewStringValue(h)
+		}
+	}
+	if rv := iop.Spec.GetRevision(); rv != "" {
+		iop.Spec.Values.Fields["revision"] = structpb2.NewStringValue(rv)
+	}
+	globalValues = iop.Spec.GetValues()
 
 	// parse components
 	components := make([]*v1alpha1.HelmComponent, 0)
@@ -252,7 +265,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 				return nil
 			}
 			newGw := ingressGateway
-			newGw.Name = buildName(gw.GetName())
+			newGw.Name = gw.GetName()
 
 			// Merge component-specific values
 			componentValues := make(map[string]interface{})
@@ -323,6 +336,8 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 			Namespace: iop.GetNamespace(),
 			Labels: map[string]string{
 				constants.ManagedLabel: constants.ManagedLabelValue,
+				// default
+				constants.AllowForceUpgradeLabel: "true",
 			},
 		},
 		Spec: &v1alpha1.HelmAppSpec{
@@ -333,6 +348,12 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 				Url:  repo,
 			},
 		},
+	}
+
+	if iop.GetLabels() != nil {
+		if v, ok := iop.GetLabels()[constants.AllowForceUpgradeLabel]; ok {
+			happ.Labels[constants.AllowForceUpgradeLabel] = v
+		}
 	}
 
 	wantYAML, err := yaml.Marshal(happ)
@@ -368,8 +389,10 @@ func (r *IstioOperatorReconciler) createOrUpdateHelmApp(ctx context.Context, hel
 		managed = true
 	}
 	// HelmApp exists, check if update is needed
-	if managed && !reflect.DeepEqual(existingHelmApp.Spec, helmApp.Spec) {
+	if managed && (!reflect.DeepEqual(existingHelmApp.Labels, helmApp.Labels) ||
+		!reflect.DeepEqual(existingHelmApp.Spec, helmApp.Spec)) {
 		log.Info("Updating existing HelmApp", "namespace", helmApp.Namespace, "name", helmApp.Name)
+		existingHelmApp.Labels = helmApp.Labels
 		existingHelmApp.Spec = helmApp.Spec
 		if err := r.Update(ctx, existingHelmApp); err != nil {
 			return fmt.Errorf("failed to update HelmApp: %w", err)
@@ -410,6 +433,7 @@ func (r *IstioOperatorReconciler) mergeIOPWithProfile(iop *operatorv1alpha1.Isti
 		return nil, fmt.Errorf("failed to merge IOPs: %w", err)
 	}
 
+	// todo remove: Test
 	wantYAML, err := yaml.Marshal(iop)
 	if err != nil {
 		fmt.Sprintf("Failed to marshal to YAML: %v", err)
