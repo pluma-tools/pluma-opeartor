@@ -4,15 +4,19 @@
 global:
   # global.imageRegistry: Global Docker image registry
   prod: pluma-opretor
+  imageRegistry: release-ci.daocloud.io/mspider
+  enabledIstioOperatorCRD: false
 
 replicaCount: 1
 
 image:
-  repository: release-ci.daocloud.io/mspider/pluma-opretor
-  pullPolicy: IfNotPresent
+  registry: ''
+  repository: pluma-opretor
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0-dev-24e914ef"
+  # tag: "v0.0-dev-24e914ef"
+  tag: "v0.0-dev-8b02363a"
 
+imagePullPolicy: IfNotPresent
 imagePullSecrets: []
 nameOverride: ""
 

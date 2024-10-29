@@ -16,6 +16,13 @@ Pluma Operator is a Kubernetes operator that provides advanced component managem
 To install the Pluma Operator using Helm, execute the following command. This command will perform an upgrade if the Pluma Operator is already installed or install it if it’s not present. It will also automatically create the `pluma-system` namespace if it doesn't exist.
 
 ```bash
+# optional
+kubectl label crd istiooperators.install.istio.io app.kubernetes.io/managed-by=Helm
+kubectl annotate crd istiooperators.install.istio.io meta.helm.sh/release-name=pluma-operator
+kubectl annotate crd istiooperators.install.istio.io meta.helm.sh/release-namespace=pluma-system
+
+
+# install
 helm upgrade --install pluma-operator ./manifests/pluma --create-namespace --namespace pluma-system
 ```
 

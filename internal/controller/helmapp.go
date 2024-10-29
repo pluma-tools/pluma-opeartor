@@ -5,14 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	errors2 "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"log"
 	"os"
-	"pluma.io/pluma-opeartor/internal/pkg/tools"
 	"reflect"
 	"strconv"
 	"time"
+
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"pluma.io/pluma-opeartor/internal/pkg/tools"
 
 	"github.com/hashicorp/go-multierror"
 	helmaction "helm.sh/helm/v3/pkg/action"
@@ -179,7 +180,7 @@ func calculateOverallPhase(helmApp *operatorv1alpha1.HelmApp, componentStatuses 
 		switch status.GetStatus() {
 		case helmrelease.StatusFailed.String():
 			hasFailure = true
-		case helmrelease.StatusDeployed.String():
+		case helmrelease.StatusDeployed.String(), helmrelease.StatusSuperseded.String():
 			// Do nothing, it's good
 		default:
 			allDeployed = false

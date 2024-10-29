@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"time"
 
 	v1alpha12 "istio.io/api/operator/v1alpha1"
 
@@ -109,7 +110,58 @@ func (r *IstioOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
+	status := r.calculateOverallPhase(ctx, iop)
+	iop.Status = &v1alpha12.InstallStatus{
+		Status: status,
+	}
+	if err := r.Status().Update(ctx, iop); err != nil {
+		return ctrl.Result{RequeueAfter: serverFailedAfter}, fmt.Errorf("failed to update iop status: %w", err)
+	}
+
+	switch status {
+	case v1alpha12.InstallStatus_ERROR:
+		return ctrl.Result{RequeueAfter: failedAfter}, nil
+	case v1alpha12.InstallStatus_RECONCILING, v1alpha12.InstallStatus_NONE:
+		return ctrl.Result{RequeueAfter: reconcileAfter}, nil
+	default:
+		return ctrl.Result{}, nil
+	}
 	return ctrl.Result{}, nil
+}
+
+const (
+	failedAfter       = 90 * time.Second
+	serverFailedAfter = 60 * time.Second
+	reconcileAfter    = 20 * time.Second
+)
+
+func (r *IstioOperatorReconciler) calculateOverallPhase(ctx context.Context, iop *operatorv1alpha1.IstioOperator) v1alpha12.InstallStatus_Status {
+	if iop == nil {
+		return v1alpha12.InstallStatus_NONE
+	}
+	helmApp := &v1alpha1.HelmApp{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: iop.GetNamespace(), Name: iop.GetName()}, helmApp)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return v1alpha12.InstallStatus_RECONCILING
+		}
+		return v1alpha12.InstallStatus_NONE
+	}
+
+	phase := v1alpha1.Phase_UNKNOWN
+	if helmApp.Status != nil {
+		phase = helmApp.Status.GetPhase()
+	}
+	switch phase {
+	case v1alpha1.Phase_UNKNOWN:
+		return v1alpha12.InstallStatus_NONE
+	case v1alpha1.Phase_SUCCEEDED:
+		return v1alpha12.InstallStatus_HEALTHY
+	case v1alpha1.Phase_FAILED:
+		return v1alpha12.InstallStatus_ERROR
+	default:
+		return v1alpha12.InstallStatus_RECONCILING
+	}
 }
 
 func structToMap(in any) map[string]interface{} {
@@ -338,6 +390,7 @@ func (r *IstioOperatorReconciler) convertIopToHelmApp(in *operatorv1alpha1.Istio
 				constants.ManagedLabel: constants.ManagedLabelValue,
 				// default
 				constants.AllowForceUpgradeLabel: "true",
+				constants.SourceFromIOP:          fmt.Sprintf("%s", in.GetName()),
 			},
 		},
 		Spec: &v1alpha1.HelmAppSpec{
